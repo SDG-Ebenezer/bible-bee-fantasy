@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semifinals Fantasy</title>
+<style>
+:root{--bg:#f2f2f2;--card:#fff;--ink:#1a1a1a;--mute:#6b6b6b;--line:#dcdcdc;--nav:#121212;--red:#d00;--green:#1a8f3c}
+@media(prefers-color-scheme:dark){:root{--bg:#0d0d0d;--card:#1b1b1b;--ink:#f1f1f1;--mute:#9a9a9a;--line:#333;--nav:#000}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Helvetica Neue",Arial,sans-serif}
+header{background:var(--nav);color:#fff;border-bottom:4px solid var(--red)}
+.bar{max-width:1000px;margin:auto;display:flex;align-items:center;gap:24px;padding:0 16px;flex-wrap:wrap}
+.logo{font:900 22px Impact,"Arial Black",sans-serif;font-style:italic;padding:12px 0}.logo b{color:var(--red)}
+nav button{background:none;border:0;color:#bbb;font:700 14px inherit;padding:18px 12px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-4px}
+nav button.on{color:#fff;border-color:#fff}
+main{max-width:1000px;margin:20px auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--line);margin-bottom:16px}
+.card h2{margin:0;padding:10px 14px;font-size:15px;border-bottom:1px solid var(--line);background:rgba(128,128,128,.08)}
+table{width:100%;border-collapse:collapse}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line)}
+th{font-size:12px;color:var(--mute)}td.n,th.n{text-align:right}tr:last-child td{border:0}
+.pts{font-weight:800;font-size:16px}.rank{color:var(--mute);width:40px}
+button.b,select,input{font:inherit;padding:7px 10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button.b{background:var(--red);border-color:var(--red);color:#fff;font-weight:700;cursor:pointer}
+button.b.alt{background:none;color:var(--ink);border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.tag{font-size:11px;font-weight:800;padding:2px 7px;color:#fff}.in{background:var(--green)}.out{background:#888}.pend{background:#c80}
+.row{display:flex;gap:8px;padding:12px 14px;flex-wrap:wrap;align-items:center}.msg{padding:8px 14px;color:var(--red);font-weight:700}
+.scroll{max-height:520px;overflow:auto}:focus-visible{outline:3px solid var(--red)}
+</style></head><body>
+<header><div class="bar"><div class="logo">SEMI<b>FINALS</b> FANTASY</div>
+<nav id="nav"></nav></div></header><main id="app"></main>
+<script>
+const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S={pool:[],results:{},board:[],locked:false}, tab='standings', me=null, picks=[], msg='', adminKey='';
+const TABS={standings:'Standings',team:'My Team',players:'Players',admin:'Commissioner'};
+const api=async(u,b,h={})=>{const r=await fetch(u,{method:b?'POST':'GET',headers:{'Content-Type':'application/json',...h},body:b?JSON.stringify(b):undefined});
+  const j=await r.json();if(!r.ok)throw new Error(j.error||'Request failed');return j};
+const name=id=>(S.pool.find(p=>p.id===id)||{}).name||'?';
+const status=id=>{const r=S.results[id];return !r?'<span class="tag pend">PENDING</span>':r.semis?`<span class="tag in">SEMIS · R${r.rounds}</span>`:'<span class="tag out">MISSED</span>'};
+async function load(){S=await api('/api/state');render()}
+function render(){
+  $('#nav').innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?'on':''}" data-t="${k}">${v}</button>`).join('');
+  $('#app').innerHTML=({standings,team,players,admin})[tab]();
+}
+const standings=()=>`<div class="card"><h2>League standings ${S.locked?'(rosters locked)':'(rosters open)'}</h2>
+<table><tr><th>#</th><th>Team</th><th class="n">Picks set</th><th class="n">Points</th></tr>
+${S.board.map((t,i)=>`<tr><td class="rank">${i+1}</td><td><b>${esc(t.name)}</b></td><td class="n">${t.filled?'15/15':'incomplete'}</td><td class="n pts">${t.total}</td></tr>
+${t.picks?`<tr><td></td><td colspan="3" style="color:var(--mute)">${t.picks.map(p=>`${esc(name(p.id))} (R${p.rounds}): ${p.pts}`).join(' · ')}</td></tr>`:''}`).join('')||'<tr><td colspan="4">No teams yet. Open My Team to create one.</td></tr>'}</table></div>
+<div class="card"><h2>How scoring works</h2><div class="row">A pick that misses the semifinals scores 0. A pick that makes it scores 10 per round survived (4 rounds), plus 10 if your predicted rounds are exactly right.</div></div>`;
+const team=()=>{
+  if(!me)return `<div class="card"><h2>Sign in or create your team</h2><div class="row"><input id="nm" placeholder="Team name"><input id="pin" type="password" placeholder="PIN"><button class="b" id="login">Enter league</button></div><div class="msg">${esc(msg)}</div></div>`;
+  const chosen=new Set(picks.map(p=>p.id));
+  return `<div class="grid"><div class="card"><h2>${esc(me.name)} · ${picks.length}/15 picked</h2>
+  ${picks.map((p,i)=>`<div class="row"><b style="flex:1">${i+1}. ${esc(name(p.id))}</b>
+  <select data-r="${i}" ${S.locked?'disabled':''}>${[1,2,3,4].map(r=>`<option value="${r}" ${r===p.rounds?'selected':''}>Survives ${r} round${r>1?'s':''}</option>`).join('')}</select>
+  <button class="b alt" data-rm="${i}" ${S.locked?'disabled':''}>Drop</button></div>`).join('')||'<div class="row">Add 15 people from the player pool.</div>'}
+  <div class="row"><button class="b" id="save" ${S.locked?'disabled':''}>Save roster</button></div><div class="msg">${esc(msg)}</div></div>
+  <div class="card"><h2>Player pool</h2><div class="scroll"><table>${S.pool.filter(p=>!chosen.has(p.id)).map(p=>`<tr><td>${esc(p.name)}</td><td class="n"><button class="b" data-add="${p.id}" ${S.locked||picks.length>=15?'disabled':''}>Add</button></td></tr>`).join('')}</table></div></div></div>`};
+const players=()=>`<div class="card"><h2>Competitors</h2><table>${S.pool.map(p=>`<tr><td>${esc(p.name)}</td><td class="n">${status(p.id)}</td></tr>`).join('')}</table></div>`;
+const admin=()=>`<div class="card"><h2>Commissioner tools</h2><div class="row"><input id="ak" type="password" placeholder="Admin key" value="${esc(adminKey)}">
+<button class="b alt" id="lock">${S.locked?'Unlock':'Lock'} rosters</button></div><div class="msg">${esc(msg)}</div></div>
+<div class="card"><h2>Enter results</h2><table>${S.pool.map(p=>{const r=S.results[p.id],v=!r?'':r.semis?r.rounds:'out';
+return `<tr><td>${esc(p.name)}</td><td class="n"><select data-res="${p.id}">${[['','Pending'],['out','Missed semis'],[1,'Made 1 round'],[2,'Made 2 rounds'],[3,'Made 3 rounds'],[4,'Made 4 rounds']].map(([k,l])=>`<option value="${k}" ${String(k)===String(v)?'selected':''}>${l}</option>`).join('')}</select></td></tr>`}).join('')}</table></div>
+<div class="card"><h2>Set player pool (one name per line; resets rosters)</h2><div class="row"><textarea id="pool" rows="6" style="width:100%"></textarea><button class="b" id="setpool">Replace pool</button></div></div>`;
+document.addEventListener('click',async e=>{const d=e.target.dataset;try{
+  if(d.t){tab=d.t;msg='';render()}
+  else if(e.target.id==='login'){const n=$('#nm').value.trim(),p=$('#pin').value;const r=await api('/api/login',{name:n,pin:p});me={name:n,pin:p};picks=r.picks;msg='';render()}
+  else if(d.add){picks.push({id:+d.add,rounds:2});render()}
+  else if(d.rm){picks.splice(+d.rm,1);render()}
+  else if(e.target.id==='save'){await api('/api/picks',{...me,picks});msg='Roster saved.';await load()}
+  else if(e.target.id==='lock'){adminKey=$('#ak').value;await api('/api/admin/lock',{locked:!S.locked},{'x-admin-key':adminKey});msg='';await load()}
+  else if(e.target.id==='setpool'){adminKey=$('#ak').value;const names=$('#pool').value.split('\n').map(s=>s.trim()).filter(Boolean);await api('/api/admin/pool',{names},{'x-admin-key':adminKey});await load()}
+}catch(err){msg=err.message;render()}});
+document.addEventListener('change',async e=>{const d=e.target.dataset;try{
+  if(d.r!==undefined){picks[+d.r].rounds=+e.target.value}
+  else if(d.res){adminKey=$('#ak').value;await api('/api/admin/result',{id:+d.res,value:e.target.value},{'x-admin-key':adminKey});await load()}
+}catch(err){msg=err.message;render()}});
+load();setInterval(()=>{if(tab==='standings'||tab==='players')load()},15000);
+</script></body></html>
